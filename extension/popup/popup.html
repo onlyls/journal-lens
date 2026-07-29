@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Journal Lens</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="panel">
+      <header class="topbar">
+        <div>
+          <h1>Journal Lens</h1>
+          <p id="siteStatus">读取当前页面...</p>
+        </div>
+        <button id="openOptions" class="icon-button" type="button" title="设置" aria-label="设置">⚙</button>
+      </header>
+
+      <section class="status-card" id="pageCard">
+        <div class="journal" id="journalName">未识别期刊</div>
+        <div class="title" id="articleTitle"></div>
+        <div class="chips" id="metricChips"></div>
+        <dl class="facts">
+          <div>
+            <dt>DOI</dt>
+            <dd id="doiValue">-</dd>
+          </div>
+          <div>
+            <dt>数据</dt>
+            <dd id="datasetValue">-</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="actions">
+        <button id="lookupButton" type="button" class="primary">检索</button>
+        <button id="ableSciButton" type="button" class="assist" title="在科研通发起文献求助" aria-label="在科研通发起文献求助">?</button>
+        <button id="copyDoiButton" type="button">复制 DOI</button>
+      </section>
+
+      <section class="export-actions" aria-label="导出当前文献">
+        <button id="exportBibtexButton" type="button">导出 BibTeX</button>
+        <button id="exportRisButton" type="button">导出 RIS</button>
+      </section>
+
+      <p class="note" id="noteText"></p>
+
+      <footer class="credits" aria-label="致谢">
+        <span>致谢</span>
+        <a href="https://github.com/hitfyd/ShowJCR" target="_blank" rel="noreferrer">ShowJCR</a>
+        <span>·</span>
+        <a href="https://www.easyscholar.cc/" target="_blank" rel="noreferrer">EasyScholar</a>
+        <span>·</span>
+        <a href="https://www.ablesci.com/" target="_blank" rel="noreferrer">科研通</a>
+        <span>·</span>
+        <span class="powered">Powered by Codex</span>
+      </footer>
+    </main>
+
+    <script src="../src/build-flags.js"></script>
+    <script src="../src/shared.js"></script>
+    <script src="../src/storage.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
+

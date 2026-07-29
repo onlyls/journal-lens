@@ -1,0 +1,108 @@
+{
+  "manifest_version": 3,
+  "name": "Journal Lens",
+  "version": "0.4.2",
+  "version_name": "0.4.2",
+  "description": "Journal metrics and explicit literature lookup controls for academic websites.",
+  "minimum_chrome_version": "114",
+  "permissions": [
+    "activeTab",
+    "contextMenus",
+    "storage",
+    "tabs",
+    "unlimitedStorage"
+  ],
+  "host_permissions": [
+    "https://api.openalex.org/*",
+    "https://www.ablesci.com/*",
+    "https://www.easyscholar.cc/*",
+    "https://eutils.ncbi.nlm.nih.gov/*",
+    "https://raw.githubusercontent.com/*"
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Journal Lens",
+    "default_icon": {
+      "16": "assets/icons/icon-16.png",
+      "32": "assets/icons/icon-32.png",
+      "48": "assets/icons/icon-48.png",
+      "128": "assets/icons/icon-128.png"
+    }
+  },
+  "options_page": "options/options.html",
+  "background": {
+    "service_worker": "src/background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://pubs.acs.org/*",
+        "https://www.sciencedirect.com/*",
+        "https://link.springer.com/*",
+        "https://www.nature.com/*",
+        "https://*.onlinelibrary.wiley.com/*",
+        "https://pubs.rsc.org/*",
+        "https://academic.oup.com/*",
+        "https://www.tandfonline.com/*",
+        "https://journals.sagepub.com/*",
+        "https://ieeexplore.ieee.org/*",
+        "https://dl.acm.org/*",
+        "https://pubmed.ncbi.nlm.nih.gov/*",
+        "https://www.ncbi.nlm.nih.gov/*",
+        "https://www.mdpi.com/*",
+        "https://www.frontiersin.org/*",
+        "https://journals.plos.org/*",
+        "https://arxiv.org/*",
+        "https://www.biorxiv.org/*",
+        "https://www.medrxiv.org/*",
+        "https://www.science.org/*",
+        "https://iopscience.iop.org/*",
+        "https://aip.scitation.org/*",
+        "https://www.cambridge.org/*",
+        "https://www.cell.com/*",
+        "https://www.thelancet.com/*"
+      ],
+      "js": [
+        "src/build-flags.js",
+        "src/shared.js",
+        "src/storage.js",
+        "content/content.js"
+      ],
+      "css": [
+        "content/content.css"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://www.ablesci.com/*"
+      ],
+      "js": [
+        "src/build-flags.js",
+        "src/shared.js",
+        "content/ablesci.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/*"
+      ],
+      "matches": [
+        "https://*/*",
+        "http://*/*"
+      ]
+    }
+  ],
+  "icons": {
+    "16": "assets/icons/icon-16.png",
+    "32": "assets/icons/icon-32.png",
+    "48": "assets/icons/icon-48.png",
+    "96": "assets/icons/icon-96.png",
+    "128": "assets/icons/icon-128.png",
+    "256": "assets/icons/icon-256.png",
+    "512": "assets/icons/icon-512.png"
+  }
+}

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Journal Lens 设置</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <h1>Journal Lens</h1>
+          <p id="datasetSummary">读取数据集...</p>
+        </div>
+        <div class="hero-actions">
+          <button id="exportButton" type="button">导出</button>
+          <button id="clearButton" type="button" class="danger">清空</button>
+        </div>
+      </header>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>期刊数据</h2>
+          <a href="../assets/journal-template.csv" download>CSV 模板</a>
+        </div>
+        <label class="dropzone" for="metricFile">
+          <input id="metricFile" type="file" accept=".csv,.json,application/json,text/csv">
+          <span>选择 CSV 或 JSON</span>
+        </label>
+        <div class="import-actions">
+          <button id="loadShowJcrButton" type="button" class="primary">从 ShowJCR 加载</button>
+          <a href="https://github.com/hitfyd/ShowJCR" target="_blank" rel="noreferrer">查看仓库</a>
+        </div>
+        <div id="importStatus" class="status"></div>
+      </section>
+
+      <section class="section">
+        <h2>指标来源</h2>
+        <div class="form-grid">
+          <label>
+            <span>查询方式</span>
+            <select id="metricSourceMode">
+              <option value="local">本地数据（CSV / ShowJCR）</option>
+              <option value="hybrid">本地优先 + EasyScholar 补充</option>
+              <option value="easyScholar">EasyScholar API</option>
+            </select>
+          </label>
+          <label>
+            <span>EasyScholar SecretKey（仅本机存储）</span>
+            <input id="easyScholarSecretKey" type="password" autocomplete="new-password" spellcheck="false">
+          </label>
+        </div>
+        <fieldset class="metric-fields">
+          <legend>EasyScholar 展示字段</legend>
+          <div id="easyScholarFields" class="field-options"></div>
+        </fieldset>
+        <div class="api-test-row">
+          <label>
+            <span>测试期刊</span>
+            <input id="easyScholarTestJournal" type="text" value="Nature">
+          </label>
+          <button id="testEasyScholarButton" type="button">测试接口</button>
+        </div>
+        <div id="easyScholarStatus" class="status" aria-live="polite"></div>
+      </section>
+
+      <section class="section">
+        <h2>检索入口</h2>
+        <div class="form-grid">
+          <label>
+            <span>默认入口</span>
+            <select id="resolverId"></select>
+          </label>
+          <label>
+            <span>自定义 URL 模板</span>
+            <input id="customResolverTemplate" type="url" placeholder="https://example.edu/search?q={query}">
+          </label>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>文献求助</h2>
+        <div class="switches">
+          <label class="switch">
+            <input id="enableAbleSciAssist" type="checkbox">
+            <span>启用科研通表单辅助</span>
+          </label>
+          <label class="switch">
+            <input id="ableSciAutoLookup" type="checkbox">
+            <span>填入 DOI 后自动查询</span>
+          </label>
+        </div>
+        <p id="ableSciStatus" class="status">仅填写并查询元数据，最终发布始终由你确认。</p>
+      </section>
+
+      <section class="section">
+        <h2>页面标注</h2>
+        <div class="form-grid annotation-mode">
+          <label>
+            <span>检索结果、推荐与参考文献</span>
+            <select id="relatedArticleMode">
+              <option value="manual">点击后显示指标</option>
+              <option value="auto">自动显示指标</option>
+              <option value="off">关闭逐条标注</option>
+            </select>
+          </label>
+        </div>
+        <div class="switches">
+          <label class="switch">
+            <input id="enableOpenAlex" type="checkbox">
+            <span>OpenAlex 补充指标</span>
+          </label>
+          <label class="switch">
+            <input id="showUnmatchedArticleBadge" type="checkbox">
+            <span>未匹配时显示按钮</span>
+          </label>
+          <label class="switch">
+            <input id="debugMode" type="checkbox">
+            <span>Debug 模式</span>
+          </label>
+        </div>
+      </section>
+
+      <section class="section muted">
+        <h2>字段</h2>
+        <p>journal, issn, eissn, xinrui_partition, jcr_quartile, impact_factor, year, source, updated_at</p>
+      </section>
+
+      <footer class="credits" aria-label="致谢">
+        <span>致谢</span>
+        <a href="https://github.com/hitfyd/ShowJCR" target="_blank" rel="noreferrer">ShowJCR</a>
+        <span>·</span>
+        <a href="https://www.easyscholar.cc/" target="_blank" rel="noreferrer">EasyScholar</a>
+        <span>·</span>
+        <a href="https://www.ablesci.com/" target="_blank" rel="noreferrer">科研通</a>
+        <span>·</span>
+        <span class="powered">Powered by Codex</span>
+      </footer>
+    </main>
+
+    <script src="../src/build-flags.js"></script>
+    <script src="../src/shared.js"></script>
+    <script src="../src/showjcr.js"></script>
+    <script src="../src/storage.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>
+

@@ -1,0 +1,23 @@
+{
+  "name": "journal-lens",
+  "version": "0.4.2",
+  "private": true,
+  "description": "Journal Lens 是一个 Manifest V3 Chrome 插件，用于在常见学术出版网站上显示期刊指标，并提供不改写论文标题链接的检索按钮。",
+  "directories": {
+    "doc": "docs",
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "npm run test:unit && npm run test:browser",
+    "test:unit": "node tests/background-easyscholar-smoke.js && node tests/easyscholar-smoke.js && node tests/local-showjcr-smoke.js",
+    "test:browser": "node tests/ablesci-smoke.js && node tests/content-smoke.js && node tests/options-smoke.js && node tests/popup-smoke.js",
+    "check:syntax": "node --check extension/src/background.js && node --check extension/src/build-flags.js && node --check extension/src/shared.js && node --check extension/src/showjcr.js && node --check extension/src/storage.js && node --check extension/content/ablesci.js && node --check extension/content/content.js && node --check extension/options/options.js && node --check extension/popup/popup.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "playwright": "^1.62.0"
+  }
+}

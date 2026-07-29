@@ -1,0 +1,30 @@
+.journal-lens-host {
+  display: inline-flex;
+  margin: 0.45rem 0;
+  max-width: 100%;
+  vertical-align: middle;
+}
+
+.journal-lens-inline-host {
+  display: inline-flex;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
+
+.journal-lens-related-host {
+  display: inline-flex;
+  margin: 0.2rem 0 0.2rem 0.4rem;
+  max-width: 100%;
+  vertical-align: middle;
+}
+.journal-lens-related-slot {
+  box-sizing: border-box !important;
+  clear: both !important;
+  display: flex !important;
+  flex: 0 0 100% !important;
+  grid-column: 1 / -1 !important;
+  margin: 6px 0 0 !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  width: 100% !important;
+}
