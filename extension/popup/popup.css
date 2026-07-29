@@ -188,6 +188,99 @@ dd {
   padding: 0 10px;
 }
 
+.citation-card {
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  display: grid;
+  gap: 9px;
+  padding: 11px;
+}
+
+.citation-head {
+  align-items: start;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.citation-head > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.citation-label {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+#citationStyleName {
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.link-button {
+  background: transparent;
+  color: #0f766e;
+  flex: 0 0 auto;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+.citation-preview {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 7px;
+  color: #334155;
+  font-size: 11px;
+  line-height: 1.45;
+  max-height: 104px;
+  min-height: 34px;
+  overflow: auto;
+  padding: 8px;
+}
+
+.citation-preview .csl-entry {
+  margin: 0;
+}
+
+.citation-preview a {
+  color: inherit;
+}
+
+.citation-actions {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: 1fr 1fr;
+}
+
+.citation-actions button {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  min-height: 34px;
+  padding: 0 8px;
+}
+
+.citation-actions .primary {
+  background: #0f766e;
+  border-color: #0f766e;
+  color: #ffffff;
+}
+
+.citation-status {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.citation-status.warning {
+  color: #9a3412;
+}
+
 .note {
   color: #64748b;
   font-size: 12px;

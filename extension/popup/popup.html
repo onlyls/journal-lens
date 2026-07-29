@@ -43,6 +43,22 @@
         <button id="exportRisButton" type="button">导出 RIS</button>
       </section>
 
+      <section class="citation-card" id="citationCard" aria-label="格式化文献题录">
+        <div class="citation-head">
+          <div>
+            <span class="citation-label">题录样式</span>
+            <strong id="citationStyleName">正在读取...</strong>
+          </div>
+          <button id="openCitationSettings" type="button" class="link-button">管理样式</button>
+        </div>
+        <div id="citationPreview" class="citation-preview" aria-live="polite">打开论文后可生成题录预览。</div>
+        <div class="citation-actions">
+          <button id="copyCitationButton" type="button" class="primary" disabled>复制题录</button>
+          <button id="refreshCitationButton" type="button" disabled>刷新元数据</button>
+        </div>
+        <p id="citationStatus" class="citation-status" aria-live="polite"></p>
+      </section>
+
       <p class="note" id="noteText"></p>
 
       <footer class="credits" aria-label="致谢">
@@ -60,6 +76,10 @@
     <script src="../src/build-flags.js"></script>
     <script src="../src/shared.js"></script>
     <script src="../src/storage.js"></script>
+    <script src="../vendor/citeproc/before.js"></script>
+    <script src="../vendor/citeproc/citeproc.js"></script>
+    <script src="../vendor/citeproc/after.js"></script>
+    <script src="../src/citation/csl-engine.js"></script>
     <script src="popup.js"></script>
   </body>
 </html>

@@ -28,3 +28,12 @@
   min-width: 0 !important;
   width: 100% !important;
 }
+
+/* Yield to site-owned modal dialogs without shifting the article layout. */
+.journal-lens-host.journal-lens-site-modal-open,
+.journal-lens-inline-host.journal-lens-site-modal-open,
+.journal-lens-related-host.journal-lens-site-modal-open,
+.journal-lens-related-slot.journal-lens-site-modal-open {
+  pointer-events: none !important;
+  visibility: hidden !important;
+}

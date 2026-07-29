@@ -1,12 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Journal Lens",
-  "version": "0.4.2",
-  "version_name": "0.4.2",
+  "version": "0.4.5",
+  "version_name": "0.4.5",
   "description": "Journal metrics and explicit literature lookup controls for academic websites.",
   "minimum_chrome_version": "114",
   "permissions": [
     "activeTab",
+    "clipboardWrite",
     "contextMenus",
     "storage",
     "tabs",
@@ -14,6 +15,7 @@
   ],
   "host_permissions": [
     "https://api.openalex.org/*",
+    "https://doi.org/*",
     "https://www.ablesci.com/*",
     "https://www.easyscholar.cc/*",
     "https://eutils.ncbi.nlm.nih.gov/*",

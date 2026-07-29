@@ -46,11 +46,12 @@ if (Test-Path -LiteralPath $zipPath) {
 New-Item -ItemType Directory -Path $outDir | Out-Null
 
 # Do not bundle downloaded ShowJCR CSV metadata; users load it at runtime.
-$includeDirs = @("assets", "content", "options", "popup", "src")
+$includeDirs = @("assets", "content", "options", "popup", "src", "vendor")
 foreach ($dir in $includeDirs) {
   Copy-Item -LiteralPath (Join-Path $sourceRoot $dir) -Destination (Join-Path $outDir $dir) -Recurse -Force
 }
 Copy-Item -LiteralPath (Join-Path $sourceRoot "manifest.json") -Destination (Join-Path $outDir "manifest.json") -Force
+Copy-Item -LiteralPath (Join-Path $sourceRoot "THIRD_PARTY_NOTICES.md") -Destination (Join-Path $outDir "THIRD_PARTY_NOTICES.md") -Force
 
 $enableDebug = if ($Channel -eq "debug") { "true" } else { "false" }
 Write-Utf8 (Join-Path $outDir "src\build-flags.js") @"
@@ -88,7 +89,15 @@ foreach ($script in @($manifest.content_scripts)) {
 if ($Browser -eq "firefox") {
   [void]$manifest.PSObject.Properties.Remove("minimum_chrome_version")
   [void]$manifest.PSObject.Properties.Remove("version_name")
-  $manifest.background | Add-Member -Force -NotePropertyName "scripts" -NotePropertyValue @("src/background.js")
+  [void]$manifest.background.PSObject.Properties.Remove("service_worker")
+  $manifest.background | Add-Member -Force -NotePropertyName "scripts" -NotePropertyValue @(
+    "src/build-flags.js",
+    "src/shared.js",
+    "src/storage.js",
+    "src/citation/csl-metadata.js",
+    "src/citation/csl-style-manager.js",
+    "src/background.js"
+  )
   $manifest | Add-Member -Force -NotePropertyName "browser_specific_settings" -NotePropertyValue ([pscustomobject]@{
     gecko = [pscustomobject]@{
       id = $FirefoxId
@@ -104,6 +113,12 @@ if ($Browser -eq "firefox") {
 
   $backgroundPath = Join-Path $outDir "src\background.js"
   $backgroundText = Get-Content -LiteralPath $backgroundPath -Raw -Encoding UTF8
+  $backgroundText = [System.Text.RegularExpressions.Regex]::Replace(
+    $backgroundText,
+    '^importScripts\([\s\S]*?\);\s*',
+    "",
+    [System.Text.RegularExpressions.RegexOptions]::Singleline
+  )
   $backgroundText = $backgroundText.Replace("return chrome.storage.session || chrome.storage.local;", "return chrome.storage.local;")
   Write-Utf8 $backgroundPath $backgroundText
 }

@@ -35,6 +35,45 @@
         <div id="importStatus" class="status"></div>
       </section>
 
+      <section class="section citation-settings" id="citationSettings">
+        <div class="section-head">
+          <div>
+            <h2>文献题录格式</h2>
+            <p class="section-description">搜索并安装 CSL Project 官方样式，设置后可在论文弹窗中复制格式化题录。</p>
+          </div>
+          <button id="refreshStyleIndexButton" type="button">更新索引</button>
+        </div>
+
+        <div id="defaultCitationStyle" class="citation-default" aria-live="polite">
+          <strong>正在读取默认样式...</strong>
+        </div>
+
+        <div class="citation-search-row">
+          <label>
+            <span>期刊名称或引用样式名称</span>
+            <input id="citationStyleQuery" type="text" placeholder="例如 Nature Biotechnology、APA 或 ISSN">
+          </label>
+          <button id="searchCitationStylesButton" type="button" class="primary">搜索</button>
+        </div>
+        <div id="citationSearchResults" class="citation-list" aria-live="polite"></div>
+
+        <div class="citation-subhead">
+          <h3>已安装样式</h3>
+        </div>
+        <div id="installedCitationStyles" class="citation-list" aria-live="polite"></div>
+
+        <div class="citation-import">
+          <label class="compact-file" for="citationStyleFile">
+            <input id="citationStyleFile" type="file" accept=".csl,application/xml,text/xml">
+            <span>从本地导入 .csl 文件</span>
+          </label>
+          <p>只解析 CSL XML；不支持 EndNote .ens，也不会执行文件中的脚本。</p>
+        </div>
+        <div id="citationStyleStatus" class="status" aria-live="polite"></div>
+        <div id="citationStylePreview" class="citation-preview" hidden></div>
+        <p class="csl-attribution">题录由本地打包的 <a href="https://github.com/Juris-M/citeproc-js" target="_blank" rel="noreferrer">citeproc-js</a> 生成；样式与 locale 来自 <a href="https://citationstyles.org/" target="_blank" rel="noreferrer">Citation Style Language Project</a>，官方样式按 CC BY-SA 3.0 提供，文件中的作者和贡献者信息保持不变。</p>
+      </section>
+
       <section class="section">
         <h2>指标来源</h2>
         <div class="form-grid">
@@ -52,9 +91,27 @@
           </label>
         </div>
         <fieldset class="metric-fields">
-          <legend>EasyScholar 展示字段</legend>
-          <div id="easyScholarFields" class="field-options"></div>
+          <legend>指标展示字段</legend>
+          <p class="field-help">ShowJCR 与 EasyScholar 共用已支持的字段；标记“仅 EasyScholar”的字段不会影响本地数据。</p>
+          <div id="metricDisplayFields" class="field-options"></div>
         </fieldset>
+        <div class="cache-settings">
+          <div class="form-grid cache-duration">
+            <label>
+              <span>EasyScholar 缓存有效期（天）</span>
+              <input id="easyScholarCacheTtlDays" type="number" min="1" max="3650" step="1" value="30">
+            </label>
+            <label class="switch cache-forever">
+              <input id="easyScholarCacheForever" type="checkbox">
+              <span>永久保留 EasyScholar 缓存</span>
+            </label>
+          </div>
+          <div class="cache-actions">
+            <button id="clearEasyScholarCacheButton" type="button" class="danger">清除 EasyScholar 缓存</button>
+            <button id="clearOtherCachesButton" type="button">清除其他临时缓存</button>
+          </div>
+          <p id="cacheStatus" class="status" aria-live="polite">正在读取缓存状态...</p>
+        </div>
         <div class="api-test-row">
           <label>
             <span>测试期刊</span>
@@ -143,6 +200,10 @@
     <script src="../src/shared.js"></script>
     <script src="../src/showjcr.js"></script>
     <script src="../src/storage.js"></script>
+    <script src="../vendor/citeproc/before.js"></script>
+    <script src="../vendor/citeproc/citeproc.js"></script>
+    <script src="../vendor/citeproc/after.js"></script>
+    <script src="../src/citation/csl-engine.js"></script>
     <script src="options.js"></script>
   </body>
 </html>

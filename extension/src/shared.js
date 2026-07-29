@@ -5,6 +5,7 @@
   const build = root.JournalLensBuild || {};
 
   const DEFAULT_EASY_SCHOLAR_FIELDS = ["xr", "sciUp", "sci", "sciif"];
+  const DEFAULT_EASY_SCHOLAR_CACHE_TTL_DAYS = 30;
 
   const DEFAULT_SETTINGS = {
     resolverId: "googleScholar",
@@ -19,7 +20,9 @@
     ableSciAutoLookup: true,
     metricSourceMode: "local",
     easyScholarSecretKey: "",
-    easyScholarFields: DEFAULT_EASY_SCHOLAR_FIELDS
+    metricDisplayFields: DEFAULT_EASY_SCHOLAR_FIELDS,
+    easyScholarFields: DEFAULT_EASY_SCHOLAR_FIELDS,
+    easyScholarCacheTtlDays: DEFAULT_EASY_SCHOLAR_CACHE_TTL_DAYS
   };
 
   const RESOLVERS = [
@@ -46,17 +49,17 @@
   ];
 
   const EASY_SCHOLAR_FIELDS = [
-    { key: "xr", label: "新锐", target: "xrPartition" },
+    { key: "xr", label: "新锐", target: "xrPartition", showJcr: true },
     { key: "xrSmall", label: "新锐小类" },
-    { key: "xrTop", label: "新锐 Top" },
-    { key: "xrWarn", label: "新锐预警", tone: "warning" },
-    { key: "sciUp", label: "中科院升级版", target: "casPartition" },
+    { key: "xrTop", label: "新锐 Top", showJcr: true },
+    { key: "xrWarn", label: "新锐预警", tone: "warning", showJcr: true },
+    { key: "sciUp", label: "中科院升级版", target: "casPartition", showJcr: true },
     { key: "sciUpSmall", label: "中科院小类" },
-    { key: "sciUpTop", label: "中科院 Top" },
+    { key: "sciUpTop", label: "中科院 Top", showJcr: true },
     { key: "sciBase", label: "中科院基础版" },
     { key: "sciwarn", label: "中科院预警", tone: "warning" },
-    { key: "sci", label: "JCR", target: "jcrQuartile" },
-    { key: "sciif", label: "IF", target: "impactFactor" },
+    { key: "sci", label: "JCR", target: "jcrQuartile", showJcr: true },
+    { key: "sciif", label: "IF", target: "impactFactor", showJcr: true },
     { key: "sciif5", label: "5 年 IF" },
     { key: "jci", label: "JCI" },
     { key: "esi", label: "ESI" },
@@ -116,6 +119,9 @@
       "升级版分区",
       "大类分区"
     ],
+    xrWarning: ["xr_warning", "xr warning", "新锐预警", "新锐预警标记"],
+    xrTop: ["xr_top", "xr top", "新锐top", "新锐 top"],
+    casTop: ["cas_top", "cas top", "中科院top", "中科院 top"],
     warning: ["warning", "warning_flag", "预警", "预警标记"],
     isTop: ["top", "is_top", "top期刊"],
     openAccess: ["open_access", "open access", "oa", "是否oa"],
@@ -307,6 +313,9 @@
       jcrQuartile: collapseWhitespace(row.jcrQuartile).toUpperCase(),
       impactFactor: collapseWhitespace(row.impactFactor),
       casPartition: collapseWhitespace(row.casPartition),
+      xrWarning: collapseWhitespace(row.xrWarning),
+      xrTop: collapseWhitespace(row.xrTop),
+      casTop: collapseWhitespace(row.casTop),
       warning: collapseWhitespace(row.warning),
       isTop: collapseWhitespace(row.isTop),
       openAccess: collapseWhitespace(row.openAccess),
@@ -526,8 +535,8 @@
   function metricLabel(metric) {
     if (!metric) return "未匹配";
     const chunks = [];
-    if (metric.xrPartition) chunks.push(`新锐 ${metric.xrPartition}`);
-    if (metric.casPartition) chunks.push(`中科院 ${metric.casPartition}`);
+    if (metric.xrPartition) chunks.push(`新锐 ${cleanPartitionDisplay(metric.xrPartition)}`);
+    if (metric.casPartition) chunks.push(`中科院 ${cleanPartitionDisplay(metric.casPartition)}`);
     if (metric.jcrQuartile) chunks.push(`JCR ${metric.jcrQuartile}`);
     if (metric.impactFactor) chunks.push(`IF ${metric.impactFactor}`);
     if (Array.isArray(metric.extraMetrics)) {
@@ -537,8 +546,13 @@
         if (label && value) chunks.push(`${label} ${value}`);
       });
     }
-    if (metric.year) chunks.push(metric.year);
     return chunks.length ? chunks.join(" · ") : "已匹配";
+  }
+
+  function cleanPartitionDisplay(value) {
+    return collapseWhitespace(value)
+      .replace(/\s*\[\s*\d+\s*\/\s*\d+\s*\]\s*/g, " ")
+      .trim();
   }
 
   function parseEasyScholarMetric(data, selectedFields = DEFAULT_EASY_SCHOLAR_FIELDS, publicationName = "") {
@@ -658,6 +672,7 @@
     BUILD_CHANNEL: build.channel || "debug",
     DEBUG_FEATURES_AVAILABLE: build.enableDebug !== false,
     DEFAULT_EASY_SCHOLAR_FIELDS,
+    DEFAULT_EASY_SCHOLAR_CACHE_TTL_DAYS,
     DEFAULT_SETTINGS,
     EASY_SCHOLAR_FIELDS,
     RESOLVERS,
@@ -669,6 +684,7 @@
     findMetricForRecord,
     formatDateTime,
     metricLabel,
+    cleanPartitionDisplay,
     normalizeDoi,
     normalizeIssn,
     normalizeJournalLoose,

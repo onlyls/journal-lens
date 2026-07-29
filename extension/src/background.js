@@ -1,21 +1,34 @@
-importScripts("build-flags.js", "shared.js", "storage.js");
+importScripts(
+  "build-flags.js",
+  "shared.js",
+  "storage.js",
+  "citation/csl-metadata.js",
+  "citation/csl-style-manager.js"
+);
 
 const shared = globalThis.JournalLensShared;
 const store = globalThis.JournalLensStore;
 const build = globalThis.JournalLensBuild || {};
+const cslMetadata = globalThis.JournalLensCslMetadata;
+const cslStyles = globalThis.JournalLensCslStyles;
 const OPENALEX_CACHE_KEY = "journalLens.openAlexCache";
 const ARTICLE_META_CACHE_KEY = "journalLens.articleMetaCache";
 const EASY_SCHOLAR_CACHE_KEY = "journalLens.easyScholarCache";
+const CITATION_METADATA_CACHE_VERSION = 1;
+const CITATION_METADATA_CACHE_TTL = 30 * 24 * 60 * 60 * 1000;
 const ABLE_SCI_PENDING_KEY = "journalLens.ableSciPending";
 const ABLE_SCI_PENDING_TTL = 20 * 60 * 1000;
-const EASY_SCHOLAR_CACHE_TTL = 30 * 24 * 60 * 60 * 1000;
+const CSL_STYLE_INDEX_CACHE_KEY = "journalLens.csl.styleIndex";
+const CSL_METADATA_CACHE_PREFIX = "journalLens.csl.metadata:";
 const EASY_SCHOLAR_MIN_INTERVAL = 550;
 const easyScholarInFlight = new Map();
 let easyScholarRequestQueue = Promise.resolve();
 let easyScholarLastRequestAt = 0;
+let easyScholarCacheGeneration = 0;
 
 chrome.runtime.onInstalled.addListener(async () => {
   await store.saveSettings(await store.getSettings());
+  await cslStyles.ensureInitialized();
   refreshContextMenus();
 });
 
@@ -128,6 +141,48 @@ async function handleMessage(message, sender = {}) {
     return { ok: true, result };
   }
 
+  if (message.type === "JournalLens:searchCitationStyles") {
+    return { ok: true, ...(await cslStyles.searchStyles(message.query, message.limit)) };
+  }
+
+  if (message.type === "JournalLens:refreshCitationStyleIndex") {
+    const index = await cslStyles.getStyleIndex(true);
+    return { ok: true, count: index.entries.length, generatedAt: index.generatedAt, source: index.source };
+  }
+
+  if (message.type === "JournalLens:installCitationStyle") {
+    return { ok: true, ...(await cslStyles.installStyle(message.entry || message.id, Boolean(message.refresh))) };
+  }
+
+  if (message.type === "JournalLens:importCitationStyle") {
+    return { ok: true, ...(await cslStyles.importStyle(message.xml, message.fileName)) };
+  }
+
+  if (message.type === "JournalLens:listCitationStyles") {
+    return { ok: true, ...(await cslStyles.listStyles()) };
+  }
+
+  if (message.type === "JournalLens:setDefaultCitationStyle") {
+    return { ok: true, ...(await cslStyles.setDefaultStyle(message.id)) };
+  }
+
+  if (message.type === "JournalLens:removeCitationStyle") {
+    return { ok: true, ...(await cslStyles.removeStyle(message.id)) };
+  }
+
+  if (message.type === "JournalLens:getCitationMetadata" || message.type === "JournalLens:refreshCitationMetadata") {
+    const result = await resolveCitationMetadata(
+      message.record || {},
+      message.type === "JournalLens:refreshCitationMetadata" || Boolean(message.forceRefresh)
+    );
+    return { ok: true, result };
+  }
+
+  if (message.type === "JournalLens:getCitationStylePayload") {
+    const result = await cslStyles.getStylePayload(message.id, message.language);
+    return { ok: true, result };
+  }
+
   if (message.type === "JournalLens:lookupEasyScholar") {
     const settings = await store.getSettings();
     const result = await lookupEasyScholar(message.publicationName, settings, false);
@@ -138,6 +193,18 @@ async function handleMessage(message, sender = {}) {
     const settings = await store.getSettings();
     const result = await lookupEasyScholar(message.publicationName, settings, true);
     return { ok: true, ...result };
+  }
+
+  if (message.type === "JournalLens:getCacheSummary") {
+    return { ok: true, ...(await getCacheSummary()) };
+  }
+
+  if (message.type === "JournalLens:clearEasyScholarCache") {
+    return { ok: true, ...(await clearEasyScholarCache()) };
+  }
+
+  if (message.type === "JournalLens:clearOtherCaches") {
+    return { ok: true, ...(await clearOtherCaches()) };
   }
 
   return { ok: false, error: `Unknown message type: ${message.type}` };
@@ -283,16 +350,17 @@ async function lookupEasyScholar(publicationName, settings, forceRefresh) {
   if (!forceRefresh) {
     const cache = await getEasyScholarCache();
     const cached = cache[cacheKey];
-    if (cached && Date.now() - cached.cachedAt < EASY_SCHOLAR_CACHE_TTL) {
+    if (cached && isEasyScholarCacheFresh(cached, settings)) {
       return {
         publicationName: cached.publicationName || name,
-        metric: shared.parseEasyScholarMetric(cached.data, settings.easyScholarFields, cached.publicationName || name),
+        metric: shared.parseEasyScholarMetric(cached.data, metricDisplayFields(settings), cached.publicationName || name),
         cached: true
       };
     }
     if (easyScholarInFlight.has(cacheKey)) return easyScholarInFlight.get(cacheKey);
   }
 
+  const cacheGeneration = easyScholarCacheGeneration;
   const request = requestEasyScholar(name, secretKey).then(async (payload) => {
     const cache = await getEasyScholarCache();
     cache[cacheKey] = {
@@ -300,10 +368,12 @@ async function lookupEasyScholar(publicationName, settings, forceRefresh) {
       publicationName: name,
       data: payload.data
     };
-    await chrome.storage.local.set({ [EASY_SCHOLAR_CACHE_KEY]: cache });
+    if (cacheGeneration === easyScholarCacheGeneration) {
+      await chrome.storage.local.set({ [EASY_SCHOLAR_CACHE_KEY]: cache });
+    }
     return {
       publicationName: name,
-      metric: shared.parseEasyScholarMetric(payload.data, settings.easyScholarFields, name),
+      metric: shared.parseEasyScholarMetric(payload.data, metricDisplayFields(settings), name),
       cached: false
     };
   });
@@ -316,6 +386,27 @@ async function lookupEasyScholar(publicationName, settings, forceRefresh) {
       easyScholarInFlight.delete(cacheKey);
     }
   }
+}
+
+function metricDisplayFields(settings) {
+  if (Array.isArray(settings && settings.metricDisplayFields)) return settings.metricDisplayFields;
+  if (Array.isArray(settings && settings.easyScholarFields)) return settings.easyScholarFields;
+  return shared.DEFAULT_EASY_SCHOLAR_FIELDS;
+}
+
+function easyScholarCacheTtlMs(settings) {
+  const rawDays = Number(settings && settings.easyScholarCacheTtlDays);
+  if (rawDays === 0) return Number.POSITIVE_INFINITY;
+  const days = Number.isFinite(rawDays) && rawDays >= 1
+    ? Math.min(Math.floor(rawDays), 3650)
+    : shared.DEFAULT_EASY_SCHOLAR_CACHE_TTL_DAYS;
+  return days * 24 * 60 * 60 * 1000;
+}
+
+function isEasyScholarCacheFresh(entry, settings) {
+  if (!entry || !Number.isFinite(Number(entry.cachedAt))) return false;
+  const ttl = easyScholarCacheTtlMs(settings);
+  return ttl === Number.POSITIVE_INFINITY || Date.now() - Number(entry.cachedAt) < ttl;
 }
 
 async function requestEasyScholar(publicationName, secretKey) {
@@ -363,6 +454,61 @@ function getEasyScholarCache() {
   });
 }
 
+function getAllLocalStorage() {
+  return new Promise((resolve) => chrome.storage.local.get(null, (values) => resolve(values || {})));
+}
+
+function removeLocalStorage(keys) {
+  if (!keys.length) return Promise.resolve();
+  return new Promise((resolve) => chrome.storage.local.remove(keys, resolve));
+}
+
+function countCacheObject(value) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? Object.keys(value).length
+    : 0;
+}
+
+async function getCacheSummary() {
+  const values = await getAllLocalStorage();
+  const citationMetadataKeys = Object.keys(values).filter((key) => key.startsWith(CSL_METADATA_CACHE_PREFIX));
+  const otherDetails = {
+    openAlex: countCacheObject(values[OPENALEX_CACHE_KEY]),
+    articleMetadata: countCacheObject(values[ARTICLE_META_CACHE_KEY]),
+    citationMetadata: citationMetadataKeys.length,
+    citationStyleIndex: values[CSL_STYLE_INDEX_CACHE_KEY] ? 1 : 0
+  };
+  return {
+    easyScholarEntries: countCacheObject(values[EASY_SCHOLAR_CACHE_KEY]),
+    otherEntries: Object.values(otherDetails).reduce((sum, count) => sum + count, 0),
+    otherDetails
+  };
+}
+
+async function clearEasyScholarCache() {
+  const values = await getAllLocalStorage();
+  const removedEntries = countCacheObject(values[EASY_SCHOLAR_CACHE_KEY]);
+  easyScholarCacheGeneration += 1;
+  easyScholarInFlight.clear();
+  await removeLocalStorage([EASY_SCHOLAR_CACHE_KEY]);
+  return { removedEntries };
+}
+
+async function clearOtherCaches() {
+  const values = await getAllLocalStorage();
+  const removedEntries = countCacheObject(values[OPENALEX_CACHE_KEY])
+    + countCacheObject(values[ARTICLE_META_CACHE_KEY])
+    + Object.keys(values).filter((key) => key.startsWith(CSL_METADATA_CACHE_PREFIX)).length
+    + (values[CSL_STYLE_INDEX_CACHE_KEY] ? 1 : 0);
+  const keys = Object.keys(values).filter((key) => [
+    OPENALEX_CACHE_KEY,
+    ARTICLE_META_CACHE_KEY,
+    CSL_STYLE_INDEX_CACHE_KEY
+  ].includes(key) || key.startsWith(CSL_METADATA_CACHE_PREFIX));
+  await removeLocalStorage(keys);
+  return { removedEntries, removedKeys: keys };
+}
+
 async function resolveArticleMetadata(record) {
   const doi = shared.normalizeDoi(record.doi);
   const pubmedId = String(record.pubmedId || "").match(/\d+/)?.[0] || "";
@@ -387,6 +533,117 @@ async function resolveArticleMetadata(record) {
   cache[cacheKey] = { cachedAt: Date.now(), value };
   await chrome.storage.local.set({ [ARTICLE_META_CACHE_KEY]: cache });
   return value;
+}
+
+function citationMetadataCacheKey(doi) {
+  const normalized = shared.normalizeDoi(doi);
+  if (!normalized) return "";
+  let hash = 2166136261;
+  for (const char of normalized) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `journalLens.csl.metadata:${(hash >>> 0).toString(36)}`;
+}
+
+async function resolveCitationMetadata(record, forceRefresh = false) {
+  const page = cslMetadata.normalizeItem(record, "page");
+  const doi = shared.normalizeDoi(page.item.DOI || record.doi);
+  const cacheKey = citationMetadataCacheKey(doi);
+  if (cacheKey && !forceRefresh) {
+    const values = await new Promise((resolve) => chrome.storage.local.get({ [cacheKey]: null }, resolve));
+    const cached = values[cacheKey];
+    if (cached && cached.version === CITATION_METADATA_CACHE_VERSION
+      && shared.normalizeDoi(cached.item && cached.item.DOI) === doi
+      && Date.now() - Number(cached.cachedAt || 0) < CITATION_METADATA_CACHE_TTL) {
+      const merged = cslMetadata.mergeNormalized(cached, page);
+      return {
+        ...merged,
+        warnings: cslMetadata.metadataWarnings(merged.item),
+        cached: true,
+        cachedAt: cached.cachedAt
+      };
+    }
+  }
+
+  const warnings = [];
+  let normalized = { item: {}, sources: {} };
+  if (doi) {
+    try {
+      normalized = cslMetadata.normalizeItem(await fetchDoiCslJson(doi), "doi-content-negotiation");
+    } catch (error) {
+      warnings.push(`DOI 元数据获取失败：${error.message || String(error)}`);
+    }
+  }
+  normalized = cslMetadata.mergeNormalized(normalized, page);
+
+  const pubmedId = String(record.pubmedId || "").match(/\d+/)?.[0] || "";
+  if (pubmedId) {
+    try {
+      normalized = cslMetadata.mergeNormalized(
+        normalized,
+        cslMetadata.normalizeItem(await fetchPubMedSummary(pubmedId), "pubmed")
+      );
+    } catch (error) {
+      warnings.push(`PubMed 元数据获取失败：${error.message || String(error)}`);
+    }
+  }
+
+  if (doi) {
+    try {
+      normalized = cslMetadata.mergeNormalized(
+        normalized,
+        cslMetadata.normalizeItem(await fetchOpenAlexWork(doi), "openalex")
+      );
+    } catch (error) {
+      warnings.push(`OpenAlex 元数据获取失败：${error.message || String(error)}`);
+    }
+  }
+
+  normalized.item.id = doi ? `doi:${doi}` : normalized.item.id;
+  const result = {
+    ...normalized,
+    warnings: [...warnings, ...cslMetadata.metadataWarnings(normalized.item)],
+    cached: false,
+    cachedAt: Date.now()
+  };
+  if (cacheKey && cslMetadata.isUsable(result.item)) {
+    await chrome.storage.local.set({
+      [cacheKey]: {
+        version: CITATION_METADATA_CACHE_VERSION,
+        cachedAt: result.cachedAt,
+        item: result.item,
+        sources: result.sources
+      }
+    });
+  }
+  return result;
+}
+
+async function fetchDoiCslJson(doi) {
+  let response;
+  try {
+    response = await fetch(`https://doi.org/${encodeURIComponent(doi)}`, {
+      headers: {
+        accept: "application/vnd.citationstyles.csl+json, application/citeproc+json;q=0.9"
+      }
+    });
+  } catch (_error) {
+    throw new Error("网络请求失败");
+  }
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const contentType = response.headers.get("content-type") || "";
+  if (/text\/html/i.test(contentType)) throw new Error("DOI 服务返回了 HTML 页面");
+  let payload;
+  try {
+    payload = await response.json();
+  } catch (_error) {
+    throw new Error("DOI 服务返回了无法解析的 CSL-JSON");
+  }
+  if (!payload || typeof payload !== "object" || !shared.collapseWhitespace(payload.title)) {
+    throw new Error("DOI 服务返回的 CSL-JSON 缺少题名");
+  }
+  return { ...payload, DOI: shared.normalizeDoi(payload.DOI || doi) };
 }
 
 async function getArticleMetaCache() {
@@ -419,6 +676,10 @@ async function fetchPubMedSummary(pubmedId) {
     shared.normalizeIssn(entry.issn),
     shared.normalizeIssn(entry.essn)
   ]);
+  const authors = (Array.isArray(entry.authors) ? entry.authors : [])
+    .map((author) => shared.collapseWhitespace(author && author.name))
+    .filter(Boolean);
+  const page = shared.collapseWhitespace(entry.pages || entry.elocationid).replace(/^doi:\s*/i, "");
 
   return {
     title: shared.collapseWhitespace(entry.title),
@@ -427,6 +688,12 @@ async function fetchPubMedSummary(pubmedId) {
     issn: issns[0] || "",
     eissn: issns[1] || "",
     issns,
+    authors,
+    publicationDate: shared.collapseWhitespace(entry.pubdate || entry.epubdate || entry.sortpubdate),
+    volume: shared.collapseWhitespace(entry.volume),
+    issue: shared.collapseWhitespace(entry.issue),
+    page: /^10\.\d{4,9}\//i.test(page) ? "" : page,
+    articleNumber: /^10\.\d{4,9}\//i.test(page) ? "" : shared.collapseWhitespace(entry.elocationid),
     pubmedId
   };
 }
@@ -446,13 +713,30 @@ async function fetchOpenAlexWork(doi) {
     shared.normalizeIssn(source.issn_l),
     ...(Array.isArray(source.issn) ? source.issn.map(shared.normalizeIssn) : [])
   ]);
+  const biblio = work.biblio || {};
+  const authors = (Array.isArray(work.authorships) ? work.authorships : [])
+    .map((authorship) => {
+      const displayName = shared.collapseWhitespace(authorship && authorship.author && authorship.author.display_name);
+      if (!displayName) return null;
+      const parts = displayName.split(/\s+/);
+      return parts.length > 1 ? { family: parts.pop(), given: parts.join(" ") } : { literal: displayName };
+    })
+    .filter(Boolean);
   return {
     title: shared.collapseWhitespace(work.display_name || work.title),
     journal: shared.collapseWhitespace(source.display_name),
     doi,
     issn: issns[0] || "",
     eissn: issns[1] || "",
-    issns
+    issns,
+    authors,
+    publicationDate: work.publication_date || work.publication_year || "",
+    volume: shared.collapseWhitespace(biblio.volume),
+    issue: shared.collapseWhitespace(biblio.issue),
+    page: shared.collapseWhitespace([biblio.first_page, biblio.last_page].filter(Boolean).join("-")),
+    articleNumber: shared.collapseWhitespace(biblio.first_page && !biblio.last_page ? biblio.first_page : ""),
+    publisher: shared.collapseWhitespace(source.host_organization_name),
+    language: shared.collapseWhitespace(work.language)
   };
 }
 

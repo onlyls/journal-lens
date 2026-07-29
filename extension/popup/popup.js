@@ -2,9 +2,13 @@
   "use strict";
 
   const shared = window.JournalLensShared;
+  const cslEngine = window.JournalLensCslEngine;
   const state = {
     activeTab: null,
-    page: null
+    page: null,
+    citationPromise: null,
+    citationResult: null,
+    citationStyle: null
   };
 
   const nodes = {
@@ -20,18 +24,27 @@
     exportBibtexButton: document.getElementById("exportBibtexButton"),
     exportRisButton: document.getElementById("exportRisButton"),
     noteText: document.getElementById("noteText"),
-    openOptions: document.getElementById("openOptions")
+    openOptions: document.getElementById("openOptions"),
+    citationStyleName: document.getElementById("citationStyleName"),
+    citationPreview: document.getElementById("citationPreview"),
+    copyCitationButton: document.getElementById("copyCitationButton"),
+    refreshCitationButton: document.getElementById("refreshCitationButton"),
+    openCitationSettings: document.getElementById("openCitationSettings"),
+    citationStatus: document.getElementById("citationStatus")
   };
 
   init();
 
   async function init() {
     nodes.openOptions.addEventListener("click", () => chrome.runtime.openOptionsPage());
+    nodes.openCitationSettings.addEventListener("click", () => chrome.runtime.openOptionsPage());
     nodes.lookupButton.addEventListener("click", openLookup);
     nodes.ableSciButton.addEventListener("click", openAbleSciAssist);
     nodes.copyDoiButton.addEventListener("click", copyDoi);
     nodes.exportBibtexButton.addEventListener("click", () => exportCitation("bibtex"));
     nodes.exportRisButton.addEventListener("click", () => exportCitation("ris"));
+    nodes.copyCitationButton.addEventListener("click", copyFormattedCitation);
+    nodes.refreshCitationButton.addEventListener("click", () => loadCitation(true));
 
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     state.activeTab = tab;
@@ -64,6 +77,7 @@
     nodes.ableSciButton.disabled = true;
     nodes.copyDoiButton.disabled = true;
     setExportDisabled(true);
+    setCitationUnavailable("当前页面没有可识别文献");
     nodes.noteText.textContent = "可以在设置页导入期刊分区与影响因子数据。";
   }
 
@@ -82,6 +96,7 @@
       nodes.ableSciButton.disabled = true;
       nodes.copyDoiButton.disabled = true;
       setExportDisabled(true);
+      setCitationUnavailable("列表页暂不支持复制题录");
       nodes.noteText.textContent = "每条结果使用自己的题名、期刊和 DOI，不会把第一条结果当作整个页面。";
       return;
     }
@@ -98,6 +113,7 @@
     nodes.ableSciButton.disabled = !doi;
     nodes.copyDoiButton.disabled = !doi;
     setExportDisabled(!doi && !record.title);
+    initializeCitation();
     if (page.easyScholar && page.easyScholar.loading) {
       nodes.noteText.textContent = "正在等待 EasyScholar 返回期刊指标。";
     } else if (page.easyScholar && page.easyScholar.error) {
@@ -111,6 +127,9 @@
 
   function renderMetric(container, metric, openAlex) {
     const chips = [];
+    const selected = new Set(Array.isArray(state.page && state.page.metricDisplayFields)
+      ? state.page.metricDisplayFields
+      : shared.DEFAULT_EASY_SCHOLAR_FIELDS);
     if (!metric) {
       chips.push(createChip("待导入数据", "chip warn"));
       if (hasOpenAlexMeanCitedness(openAlex)) chips.push(createOpenAlexChip(openAlex.twoYearMeanCitedness));
@@ -118,20 +137,25 @@
       return;
     }
 
-    if (metric.xrPartition) chips.push(createChip(`新锐 ${metric.xrPartition}`));
-    if (metric.casPartition) chips.push(createChip(`中科院 ${metric.casPartition}`));
-    if (metric.jcrQuartile) chips.push(createChip(`JCR ${metric.jcrQuartile}`));
-    if (metric.impactFactor) chips.push(createChip(`IF ${metric.impactFactor}`));
-    if (metric.warning) chips.push(createChip(`预警 ${metric.warning}`, "chip warn"));
+    if (selected.has("xr") && metric.xrPartition) chips.push(createChip(`新锐 ${shared.cleanPartitionDisplay(metric.xrPartition)}`));
+    if (selected.has("xrTop") && metric.xrTop) chips.push(createChip("新锐 Top"));
+    if (selected.has("xrWarn") && (metric.xrWarning || metric.warning)) chips.push(createChip(`新锐预警 ${metric.xrWarning || metric.warning}`, "chip warn"));
+    if (selected.has("sciUp") && metric.casPartition) chips.push(createChip(`中科院 ${shared.cleanPartitionDisplay(metric.casPartition)}`));
+    if (selected.has("sciUpTop") && metric.casTop) chips.push(createChip("中科院 Top"));
+    if (selected.has("sci") && metric.jcrQuartile) chips.push(createChip(`JCR ${metric.jcrQuartile}`));
+    if (selected.has("sciif") && metric.impactFactor) chips.push(createChip(`IF ${metric.impactFactor}`));
     if (Array.isArray(metric.extraMetrics)) {
       metric.extraMetrics.forEach((entry) => {
+        if (entry && entry.key && !selected.has(entry.key)) return;
+        if (entry && ((entry.key === "xrTop" && metric.xrTop)
+          || (entry.key === "xrWarn" && (metric.xrWarning || metric.warning))
+          || (entry.key === "sciUpTop" && metric.casTop))) return;
         const label = shared.collapseWhitespace(entry && entry.label);
         const value = shared.collapseWhitespace(entry && entry.value);
         if (!label || !value) return;
         chips.push(createChip(`${label} ${value}`, entry.tone === "warning" ? "chip warn" : "chip"));
       });
     }
-    if (metric.year) chips.push(createChip(metric.year));
     if (hasOpenAlexMeanCitedness(openAlex)) chips.push(createOpenAlexChip(openAlex.twoYearMeanCitedness));
     setMetricChips(chips.length ? chips : [createChip("已匹配")], container);
   }
@@ -198,6 +222,142 @@
     window.setTimeout(() => {
       nodes.copyDoiButton.textContent = "复制 DOI";
     }, 1200);
+  }
+
+  function citationRecordIsUsable(record) {
+    if (shared.normalizeDoi(record && record.doi)) return true;
+    return Boolean(record && record.title && record.journal
+      && Array.isArray(record.authors) && record.authors.length
+      && record.publicationDate);
+  }
+
+  function setCitationUnavailable(message) {
+    state.citationResult = null;
+    nodes.citationStyleName.textContent = "未选择";
+    nodes.citationPreview.textContent = message;
+    nodes.copyCitationButton.disabled = true;
+    nodes.refreshCitationButton.disabled = true;
+    nodes.citationStatus.textContent = message;
+    nodes.citationStatus.className = "citation-status warning";
+  }
+
+  async function initializeCitation() {
+    const record = state.page && state.page.record;
+    if (!citationRecordIsUsable(record)) {
+      setCitationUnavailable("当前页面元数据不足，无法生成题录");
+      return;
+    }
+    nodes.refreshCitationButton.disabled = false;
+    await loadCitation(false);
+  }
+
+  async function loadCitation(forceRefresh) {
+    if (state.citationPromise) return state.citationPromise;
+    const record = state.page && state.page.record;
+    if (!record || !citationRecordIsUsable(record)) {
+      setCitationUnavailable("当前页面没有可识别文献");
+      return null;
+    }
+    state.citationPromise = (async () => {
+      nodes.copyCitationButton.disabled = true;
+      nodes.refreshCitationButton.disabled = true;
+      nodes.citationStatus.className = "citation-status";
+      nodes.citationStatus.textContent = "正在获取元数据...";
+      nodes.citationPreview.textContent = "正在获取作者、日期、卷期和页码...";
+      try {
+        const stylesResponse = await chrome.runtime.sendMessage({ type: "JournalLens:listCitationStyles" });
+        if (!stylesResponse || !stylesResponse.ok) throw new Error(stylesResponse && stylesResponse.error || "样式加载失败");
+        const styles = Array.isArray(stylesResponse.styles) ? stylesResponse.styles : [];
+        const style = styles.find((entry) => entry.id === stylesResponse.defaultStyleId);
+        if (!style) throw new Error("未选择题录样式");
+        state.citationStyle = style;
+        nodes.citationStyleName.textContent = style.title;
+
+        const metadataResponse = await chrome.runtime.sendMessage({
+          type: forceRefresh ? "JournalLens:refreshCitationMetadata" : "JournalLens:getCitationMetadata",
+          record
+        });
+        if (!metadataResponse || !metadataResponse.ok) {
+          throw new Error(metadataResponse && metadataResponse.error || "元数据加载失败");
+        }
+        nodes.citationStatus.textContent = "正在生成题录...";
+        const payloadResponse = await chrome.runtime.sendMessage({
+          type: "JournalLens:getCitationStylePayload",
+          id: style.id,
+          language: metadataResponse.result.item.language || navigator.language || "en-US"
+        });
+        if (!payloadResponse || !payloadResponse.ok) {
+          throw new Error(payloadResponse && payloadResponse.error || "样式加载失败");
+        }
+        const rendered = cslEngine.renderBibliography({
+          item: metadataResponse.result.item,
+          ...payloadResponse.result,
+          language: payloadResponse.result.language || metadataResponse.result.item.language || navigator.language || "en-US",
+          warnings: metadataResponse.result.warnings || []
+        });
+        state.citationResult = rendered;
+        nodes.citationPreview.innerHTML = rendered.html;
+        nodes.copyCitationButton.disabled = false;
+        nodes.refreshCitationButton.disabled = false;
+        if (rendered.warnings.length) {
+          nodes.citationStatus.textContent = rendered.warnings[0];
+          nodes.citationStatus.className = "citation-status warning";
+        } else {
+          nodes.citationStatus.textContent = metadataResponse.result.cached ? "已使用本地缓存元数据" : "题录已生成";
+        }
+        return rendered;
+      } catch (error) {
+        state.citationResult = null;
+        nodes.citationPreview.textContent = error.message || String(error);
+        nodes.citationStatus.textContent = /样式/.test(error.message || "")
+          ? `样式加载失败：${error.message || String(error)}`
+          : error.message || String(error);
+        nodes.citationStatus.className = "citation-status warning";
+        nodes.copyCitationButton.disabled = true;
+        nodes.refreshCitationButton.disabled = false;
+        return null;
+      } finally {
+        state.citationPromise = null;
+      }
+    })();
+    return state.citationPromise;
+  }
+
+  async function copyFormattedCitation() {
+    if (state.citationPromise) return;
+    nodes.copyCitationButton.disabled = true;
+    const originalText = nodes.copyCitationButton.textContent;
+    try {
+      const citation = state.citationResult || await loadCitation(false);
+      if (!citation) throw new Error("题录尚未生成");
+      let richTextCopied = false;
+      if (typeof ClipboardItem === "function" && navigator.clipboard && typeof navigator.clipboard.write === "function") {
+        try {
+          await navigator.clipboard.write([
+            new ClipboardItem({
+              "text/plain": new Blob([citation.plainText], { type: "text/plain" }),
+              "text/html": new Blob([citation.html], { type: "text/html" })
+            })
+          ]);
+          richTextCopied = true;
+        } catch (_error) {
+          await navigator.clipboard.writeText(citation.plainText);
+        }
+      } else {
+        await navigator.clipboard.writeText(citation.plainText);
+      }
+      nodes.copyCitationButton.textContent = "已复制";
+      nodes.citationStatus.textContent = richTextCopied ? "已复制纯文本和富文本题录" : "仅复制了纯文本";
+      nodes.citationStatus.className = "citation-status";
+    } catch (error) {
+      nodes.citationStatus.textContent = `复制失败：${error.message || String(error)}`;
+      nodes.citationStatus.className = "citation-status warning";
+    } finally {
+      window.setTimeout(() => {
+        nodes.copyCitationButton.textContent = originalText;
+        nodes.copyCitationButton.disabled = !state.citationResult;
+      }, 1300);
+    }
   }
 
   function setExportDisabled(disabled) {

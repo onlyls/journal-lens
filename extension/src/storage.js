@@ -27,12 +27,30 @@
 
   async function getSettings() {
     const values = await storageGet({ [SETTINGS_KEY]: shared.DEFAULT_SETTINGS });
-    return { ...shared.DEFAULT_SETTINGS, ...(values[SETTINGS_KEY] || {}) };
+    const stored = values[SETTINGS_KEY] || {};
+    const metricDisplayFields = Array.isArray(stored.metricDisplayFields)
+      ? stored.metricDisplayFields
+      : Array.isArray(stored.easyScholarFields)
+        ? stored.easyScholarFields
+        : shared.DEFAULT_EASY_SCHOLAR_FIELDS;
+    return {
+      ...shared.DEFAULT_SETTINGS,
+      ...stored,
+      metricDisplayFields,
+      easyScholarFields: metricDisplayFields
+    };
   }
 
   async function saveSettings(patch) {
     const current = await getSettings();
     const next = { ...current, ...patch };
+    const metricDisplayFields = Array.isArray(patch.metricDisplayFields)
+      ? patch.metricDisplayFields
+      : Array.isArray(patch.easyScholarFields)
+        ? patch.easyScholarFields
+        : current.metricDisplayFields;
+    next.metricDisplayFields = metricDisplayFields;
+    next.easyScholarFields = metricDisplayFields;
     await storageSet({ [SETTINGS_KEY]: next });
     return next;
   }

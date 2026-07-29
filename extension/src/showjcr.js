@@ -90,24 +90,24 @@
 
   function parseXrRows(text) {
     return shared.parseCsvObjects(text).map((row) => {
-      const partitions = [
-        row["大类新锐分区"],
-        row["大类2新锐分区"],
-        row["小类1新锐分区"],
-        row["小类2新锐分区"],
-        row["小类3新锐分区"],
-        row["小类4新锐分区"],
-        row["小类5新锐分区"],
-        row["小类6新锐分区"]
-      ].filter(Boolean);
+      const largeCategories = [
+        {
+          name: row["大类中文名"] || row["大类英文名"],
+          partition: row["大类新锐分区"]
+        },
+        {
+          name: row["大类2中文名"] || row["大类2英文名"],
+          partition: row["大类2新锐分区"]
+        }
+      ];
 
       return {
         title: row.Journal || row["刊名"],
         issn: cleanIssn(row.ISSN),
         eissn: cleanIssn(row.EISSN),
-        xrPartition: bestPartition(partitions),
-        warning: row["预警标记"],
-        isTop: row.Top,
+        xrPartition: bestCategoryPartition(largeCategories),
+        xrWarning: row["预警标记"],
+        xrTop: positiveTop(row.Top),
         year: row["年份"] || "2026",
         source: "ShowJCR XR2026"
       };
@@ -121,8 +121,8 @@
         title: row.Journal,
         issn: issns[0] || "",
         eissn: issns[1] || "",
-        casPartition: cleanMetric(row["大类分区"]),
-        isTop: row.Top,
+        casPartition: formatCategoryPartition(row["大类"], row["大类分区"]),
+        casTop: positiveTop(row.Top),
         openAccess: row["Open Access"],
         year: row["年份"] || "2025",
         source: "ShowJCR FQBJCR2025"
@@ -148,6 +148,9 @@
         mergeValue(record, "jcrQuartile", normalized.jcrQuartile);
         mergeValue(record, "impactFactor", normalized.impactFactor);
         mergeValue(record, "casPartition", normalized.casPartition);
+        mergeValue(record, "xrWarning", normalized.xrWarning);
+        mergeValue(record, "xrTop", normalized.xrTop);
+        mergeValue(record, "casTop", normalized.casTop);
         mergeValue(record, "warning", normalized.warning);
         mergeValue(record, "isTop", normalized.isTop);
         mergeValue(record, "openAccess", normalized.openAccess);
@@ -195,6 +198,9 @@
       jcrQuartile: cleanMetric(row.jcrQuartile),
       impactFactor: cleanMetric(row.impactFactor),
       casPartition: cleanMetric(row.casPartition),
+      xrWarning: cleanMetric(row.xrWarning),
+      xrTop: cleanMetric(row.xrTop),
+      casTop: cleanMetric(row.casTop),
       warning: cleanMetric(row.warning),
       isTop: cleanMetric(row.isTop),
       openAccess: cleanMetric(row.openAccess),
@@ -218,10 +224,16 @@
     return quartiles.sort((left, right) => Number(left.slice(1)) - Number(right.slice(1)))[0];
   }
 
-  function bestPartition(values) {
-    const partitions = values.map(cleanMetric).filter(Boolean);
-    if (!partitions.length) return "";
-    return partitions.sort((left, right) => partitionRank(left) - partitionRank(right))[0];
+  function bestCategoryPartition(entries) {
+    const candidates = entries
+      .map((entry) => ({
+        name: cleanMetric(entry && entry.name),
+        partition: normalizePartition(entry && entry.partition)
+      }))
+      .filter((entry) => entry.partition);
+    if (!candidates.length) return "";
+    candidates.sort((left, right) => partitionRank(left.partition) - partitionRank(right.partition));
+    return formatCategoryPartition(candidates[0].name, candidates[0].partition);
   }
 
   function partitionRank(value) {
@@ -245,6 +257,28 @@
     const text = shared.collapseWhitespace(value);
     if (!text || text === "-" || text === "—" || /^n\/?a$/i.test(text)) return "";
     return text.replace(/\s*区$/, "区");
+  }
+
+  function normalizePartition(value) {
+    const text = shared.cleanPartitionDisplay(cleanMetric(value));
+    const match = text.match(/^([1-4])\s*(?:区)?\s*(.*)$/);
+    if (!match) return text;
+    return `${match[1]}区${match[2] ? ` ${match[2]}` : ""}`;
+  }
+
+  function positiveTop(value) {
+    const text = cleanMetric(value);
+    return /^(?:top|是|yes|true|1)$/i.test(text) ? "Top" : "";
+  }
+
+  function formatCategoryPartition(category, partition) {
+    const name = cleanMetric(category);
+    const value = normalizePartition(partition);
+    if (!name) return value;
+    if (!value) return name;
+    if (value.includes(name)) return value;
+    const separator = /[\u3400-\u9fff]$/.test(name) ? "" : " ";
+    return `${name}${separator}${value}`;
   }
 
   function cleanSources(value) {

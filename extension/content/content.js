@@ -4,8 +4,23 @@
   const shared = window.JournalLensShared;
   const store = window.JournalLensStore;
   const build = window.JournalLensBuild || {};
-  const DEBUG_VERSION = build.version || "0.4.2";
+  const DEBUG_VERSION = build.version || "0.4.5";
   const RELATED_CONTEXT_PATTERN = /reference|recommend|related|similar|bibliograph|citation|search-result|docsum/i;
+  const JOURNAL_LENS_HOST_SELECTOR = [
+    ".journal-lens-host",
+    ".journal-lens-related-host",
+    ".journal-lens-related-slot",
+    ".journal-lens-inline-host"
+  ].join(",");
+  const SITE_MODAL_SELECTOR = [
+    "dialog[open]",
+    "[role='dialog'][aria-modal='true']",
+    "[role='alertdialog'][aria-modal='true']",
+    ".modal.show",
+    ".modal.is-open",
+    ".modal.open",
+    ".modal[aria-hidden='false']"
+  ].join(",");
   const state = {
     settings: null,
     dataset: null,
@@ -28,6 +43,9 @@
     relatedCount: 0,
     observer: null,
     observerTimer: 0,
+    modalConflictObserver: null,
+    modalConflictTimer: 0,
+    siteModalOpen: false,
     reloadTimer: 0,
     resolveQueue: [],
     activeResolutions: 0
@@ -45,6 +63,7 @@
     state.index = shared.buildMetricIndex(dataset.rows);
     readPageContext();
     renderCurrentPage();
+    bindSiteModalConflictGuard();
     bindMessages();
     bindStorageChanges();
   }
@@ -53,7 +72,12 @@
     try {
       const response = await chrome.runtime.sendMessage({ type: "JournalLens:getContentSettings" });
       if (response && response.ok && response.settings) {
-        return { ...shared.DEFAULT_SETTINGS, ...response.settings };
+        const settings = { ...shared.DEFAULT_SETTINGS, ...response.settings };
+        if (!Array.isArray(response.settings.metricDisplayFields)
+          && Array.isArray(response.settings.easyScholarFields)) {
+          settings.metricDisplayFields = response.settings.easyScholarFields;
+        }
+        return settings;
       }
     } catch (_error) {
       // Keep the page usable if the service worker is restarting.
@@ -179,6 +203,7 @@
         relatedCount: state.relatedCount,
         record: state.record,
         metric: state.metric,
+        metricDisplayFields: [...metricDisplayFieldSet()],
         openAlex: state.openAlex,
         features: {
           ableSciAssist: ableSciAssistEnabled()
@@ -271,6 +296,11 @@
       ...valuesForPrefix(meta, "dc.issn").map(shared.normalizeIssn),
       ...(Array.isArray(jsonLd.issns) ? jsonLd.issns.map(shared.normalizeIssn) : [])
     ]) : [];
+    const citationAuthors = articleMode
+      ? (Array.isArray(meta.citation_author) ? meta.citation_author : [meta.citation_author]).filter(Boolean)
+      : [];
+    const firstPage = articleMode ? shared.collapseWhitespace(firstValue(meta.citation_firstpage, meta.prism_startingpage, jsonLd.firstPage)) : "";
+    const lastPage = articleMode ? shared.collapseWhitespace(firstValue(meta.citation_lastpage, meta.prism_endingpage, jsonLd.lastPage)) : "";
 
     return {
       title: articleMode ? shared.collapseWhitespace(firstValue(
@@ -294,6 +324,39 @@
         textFromSelector(".journal-title")
       )) : "",
       doi,
+      authors: shared.unique([...citationAuthors, ...(Array.isArray(jsonLd.authors) ? jsonLd.authors : [])]),
+      publicationDate: articleMode ? shared.collapseWhitespace(firstValue(
+        meta.citation_publication_date,
+        meta.citation_date,
+        meta.prism_publicationdate,
+        meta["prism.publicationdate"],
+        meta.dc_date,
+        meta["dc.date"],
+        jsonLd.publicationDate
+      )) : "",
+      volume: articleMode ? shared.collapseWhitespace(firstValue(meta.citation_volume, meta.prism_volume, jsonLd.volume)) : "",
+      issue: articleMode ? shared.collapseWhitespace(firstValue(meta.citation_issue, meta.prism_number, meta.prism_issuenumber, jsonLd.issue)) : "",
+      page: articleMode ? shared.collapseWhitespace(firstValue(
+        meta.citation_pages,
+        jsonLd.page,
+        firstPage && lastPage ? `${firstPage}-${lastPage}` : firstPage
+      )) : "",
+      pageFirst: firstPage,
+      articleNumber: articleMode ? shared.collapseWhitespace(firstValue(
+        meta.citation_article_number,
+        jsonLd.articleNumber
+      )) : "",
+      journalAbbreviation: articleMode ? shared.collapseWhitespace(firstValue(
+        meta.citation_journal_abbrev,
+        meta.prism_publicationname_abbreviation,
+        jsonLd.journalAbbreviation
+      )) : "",
+      publisher: articleMode ? shared.collapseWhitespace(firstValue(meta.citation_publisher, meta.dc_publisher, jsonLd.publisher)) : "",
+      language: articleMode ? shared.collapseWhitespace(firstValue(meta.citation_language, meta.dc_language, jsonLd.language, document.documentElement.lang)) : "",
+      pubmedId: articleMode ? shared.collapseWhitespace(firstValue(
+        meta.citation_pmid,
+        location.hostname === "pubmed.ncbi.nlm.nih.gov" ? location.pathname.match(/^\/(\d+)/)?.[1] : ""
+      )) : "",
       issn: issns[0] || "",
       issns,
       url: location.href,
@@ -348,7 +411,7 @@
       const type = String(entry["@type"] || "").toLowerCase();
       return type.includes("scholarlyarticle") || type === "article" || type.endsWith("article");
     });
-    if (!article) return { isArticle: false, title: "", journal: "", doi: "", issns: [] };
+    if (!article) return { isArticle: false, title: "", journal: "", doi: "", issns: [], authors: [] };
 
     const isPartOf = article.isPartOf || article.publisher || {};
     const periodical = Array.isArray(isPartOf) ? isPartOf[0] : isPartOf;
@@ -358,13 +421,37 @@
       ...(Array.isArray(periodical && periodical.issn) ? periodical.issn : []),
       ...(Array.isArray(article.issn) ? article.issn : [])
     ].flat());
+    const authorValues = Array.isArray(article.author) ? article.author : [article.author];
+    const authors = authorValues.map((author) => {
+      if (!author) return null;
+      if (typeof author === "string") return author;
+      if (author.familyName || author.givenName) {
+        return { family: author.familyName || "", given: author.givenName || "" };
+      }
+      return author.name || "";
+    }).filter(Boolean);
+    const publicationIssue = article.isPartOf && article.isPartOf.issueNumber
+      ? article.isPartOf
+      : (periodical && periodical.isPartOf) || {};
+    const publisher = article.publisher || (periodical && periodical.publisher) || {};
 
     return {
       isArticle: true,
       title: article.headline || article.name || "",
       journal: (periodical && (periodical.name || periodical.displayName)) || "",
       doi: article.doi || article.identifier || "",
-      issns
+      issns,
+      authors,
+      publicationDate: article.datePublished || article.dateCreated || "",
+      volume: article.volumeNumber || publicationIssue.volumeNumber || "",
+      issue: article.issueNumber || publicationIssue.issueNumber || "",
+      page: article.pagination || "",
+      firstPage: article.pageStart || "",
+      lastPage: article.pageEnd || "",
+      articleNumber: article.articleNumber || "",
+      journalAbbreviation: (periodical && periodical.alternateName) || "",
+      publisher: typeof publisher === "string" ? publisher : publisher.name || "",
+      language: article.inLanguage || ""
     };
   }
 
@@ -403,6 +490,7 @@
       needsKey: easyScholarNeedsKey()
     });
     host.classList.add("journal-lens-host");
+    applySiteModalState(host);
 
     if (state.articleHost && state.articleHost.isConnected) state.articleHost.replaceWith(host);
     else target.insertAdjacentElement("afterend", host);
@@ -461,6 +549,7 @@
         host: document.createElement("span")
       };
       entry.host.classList.add("journal-lens-related-host");
+      applySiteModalState(entry.host);
       entry.host.dataset.journalLensKey = item.key || "";
       entry.host.__journalLensEntry = entry;
       entry.host.attachShadow({ mode: "open" });
@@ -1603,6 +1692,7 @@
       if (!slot) {
         slot = document.createElement("span");
         slot.className = "journal-lens-related-slot";
+        applySiteModalState(slot);
         target.append(slot);
       }
       slot.append(entry.host);
@@ -1613,6 +1703,7 @@
       if (!slot || !slot.classList.contains("journal-lens-related-slot")) {
         slot = document.createElement("span");
         slot.className = "journal-lens-related-slot";
+        applySiteModalState(slot);
         target.insertAdjacentElement("afterend", slot);
       }
       slot.append(entry.host);
@@ -2091,15 +2182,46 @@
     });
   }
 
+  function bindSiteModalConflictGuard() {
+    if (state.modalConflictObserver) return;
+    state.modalConflictObserver = new MutationObserver(() => {
+      window.clearTimeout(state.modalConflictTimer);
+      state.modalConflictTimer = window.setTimeout(syncSiteModalConflict, 40);
+    });
+    state.modalConflictObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["aria-hidden", "aria-modal", "class", "hidden", "open", "style"],
+      childList: true,
+      subtree: true
+    });
+    syncSiteModalConflict();
+  }
+
+  function syncSiteModalConflict() {
+    const modalOpen = [...document.querySelectorAll(SITE_MODAL_SELECTOR)]
+      .some((node) => !isJournalLensNode(node) && isVisibleSiteModal(node));
+    state.siteModalOpen = modalOpen;
+    document.querySelectorAll(JOURNAL_LENS_HOST_SELECTOR).forEach(applySiteModalState);
+  }
+
+  function isVisibleSiteModal(node) {
+    if (!node || node.hidden || node.getAttribute("aria-hidden") === "true") return false;
+    const style = window.getComputedStyle(node);
+    if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse") return false;
+    if (Number.parseFloat(style.opacity || "1") === 0) return false;
+    const rect = node.getBoundingClientRect();
+    return node.getClientRects().length > 0 && rect.width > 0 && rect.height > 0;
+  }
+
+  function applySiteModalState(node) {
+    if (!node || !node.classList) return;
+    node.classList.toggle("journal-lens-site-modal-open", state.siteModalOpen);
+  }
+
   function isJournalLensNode(node) {
     const element = node && node.nodeType === Node.ELEMENT_NODE ? node : node && node.parentElement;
     if (!element || !element.closest) return false;
-    return Boolean(element.closest([
-      ".journal-lens-host",
-      ".journal-lens-related-host",
-      ".journal-lens-related-slot",
-      ".journal-lens-inline-host"
-    ].join(",")));
+    return Boolean(element.closest(JOURNAL_LENS_HOST_SELECTOR));
   }
 
   async function enrichWithOpenAlex() {
@@ -2215,7 +2337,7 @@
     replaceShadowMarkup(shadow, `
       <style>
         :host { all:initial; display:inline-flex; max-width:100%; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; line-height:1.2; vertical-align:middle; }
-        .lens { align-items:center; background:#f8fafc; border:1px solid #cbd5e1; border-radius:7px; box-shadow:0 6px 16px rgba(15,23,42,.07); color:#0f172a; display:inline-flex; flex-wrap:wrap; gap:6px; max-width:min(760px,100%); padding:6px 7px; position:relative; z-index:2147483000; }
+        .lens { align-items:center; background:#f8fafc; border:1px solid #cbd5e1; border-radius:7px; box-shadow:0 6px 16px rgba(15,23,42,.07); color:#0f172a; display:inline-flex; flex-wrap:wrap; gap:6px; max-width:min(760px,100%); padding:6px 7px; }
         .mark { align-items:center; background:#0f766e; border-radius:5px; color:#fff; display:inline-flex; font-size:11px; font-weight:800; height:20px; justify-content:center; min-width:22px; padding:0 5px; }
         .journal { color:#334155; font-size:12px; font-weight:650; max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
         .chip { align-items:center; background:#e0f2fe; border:1px solid #bae6fd; border-radius:5px; color:#075985; display:inline-flex; font-size:12px; font-weight:650; min-height:20px; padding:1px 6px; white-space:nowrap; }
@@ -2228,7 +2350,7 @@
         button:disabled { cursor:not-allowed; opacity:.62; }
         button:focus-visible { outline:2px solid #38bdf8; outline-offset:2px; }
       </style>
-      <span class="lens" title="${escapeAttribute(journalName)} · ${escapeAttribute(shared.metricLabel(metric))}">
+      <span class="lens" title="${escapeAttribute(journalName)} · ${escapeAttribute(shared.metricLabel(metricForDisplay(metric)))}">
         <span class="mark">JL</span>
         <span class="journal">${escapeHtml(journalName)}</span>
         ${metricContent}
@@ -2267,14 +2389,21 @@
 
   function renderMetricChips(metric, compact) {
     if (!metric) return `<span class="chip missing">未匹配</span>`;
+    const selected = metricDisplayFieldSet();
     const chips = [];
-    if (metric.xrPartition) chips.push(`<span class="chip">新锐 ${escapeHtml(metric.xrPartition)}</span>`);
-    if (metric.casPartition) chips.push(`<span class="chip">中科院 ${escapeHtml(metric.casPartition)}</span>`);
-    if (metric.jcrQuartile) chips.push(`<span class="chip">JCR ${escapeHtml(metric.jcrQuartile)}</span>`);
-    if (metric.impactFactor) chips.push(`<span class="chip">IF ${escapeHtml(metric.impactFactor)}</span>`);
-    if (metric.warning) chips.push(`<span class="chip missing">预警 ${escapeHtml(metric.warning)}</span>`);
+    if (selected.has("xr") && metric.xrPartition) chips.push(`<span class="chip">新锐 ${escapeHtml(shared.cleanPartitionDisplay(metric.xrPartition))}</span>`);
+    if (selected.has("xrTop") && metric.xrTop) chips.push(`<span class="chip">新锐 Top</span>`);
+    if (selected.has("xrWarn") && (metric.xrWarning || metric.warning)) chips.push(`<span class="chip missing">新锐预警 ${escapeHtml(metric.xrWarning || metric.warning)}</span>`);
+    if (selected.has("sciUp") && metric.casPartition) chips.push(`<span class="chip">中科院 ${escapeHtml(shared.cleanPartitionDisplay(metric.casPartition))}</span>`);
+    if (selected.has("sciUpTop") && metric.casTop) chips.push(`<span class="chip">中科院 Top</span>`);
+    if (selected.has("sci") && metric.jcrQuartile) chips.push(`<span class="chip">JCR ${escapeHtml(metric.jcrQuartile)}</span>`);
+    if (selected.has("sciif") && metric.impactFactor) chips.push(`<span class="chip">IF ${escapeHtml(metric.impactFactor)}</span>`);
     if (Array.isArray(metric.extraMetrics)) {
       metric.extraMetrics.forEach((entry) => {
+        if (entry && entry.key && !selected.has(entry.key)) return;
+        if (entry && ((entry.key === "xrTop" && metric.xrTop)
+          || (entry.key === "xrWarn" && (metric.xrWarning || metric.warning))
+          || (entry.key === "sciUpTop" && metric.casTop))) return;
         const label = shared.collapseWhitespace(entry && entry.label);
         const value = shared.collapseWhitespace(entry && entry.value);
         if (!label || !value) return;
@@ -2282,9 +2411,40 @@
         chips.push(`<span class="chip${toneClass}">${escapeHtml(label)} ${escapeHtml(value)}</span>`);
       });
     }
-    if (!compact && metric.year) chips.push(`<span class="chip">${escapeHtml(metric.year)}</span>`);
     if (!chips.length) chips.push(`<span class="chip">已匹配</span>`);
     return chips.join("");
+  }
+
+  function metricDisplayFieldSet() {
+    return new Set(Array.isArray(state.settings.metricDisplayFields)
+      ? state.settings.metricDisplayFields
+      : Array.isArray(state.settings.easyScholarFields)
+        ? state.settings.easyScholarFields
+        : shared.DEFAULT_EASY_SCHOLAR_FIELDS);
+  }
+
+  function metricForDisplay(metric) {
+    if (!metric) return null;
+    const selected = metricDisplayFieldSet();
+    return {
+      ...metric,
+      xrPartition: selected.has("xr") ? shared.cleanPartitionDisplay(metric.xrPartition) : "",
+      casPartition: selected.has("sciUp") ? shared.cleanPartitionDisplay(metric.casPartition) : "",
+      jcrQuartile: selected.has("sci") ? metric.jcrQuartile : "",
+      impactFactor: selected.has("sciif") ? metric.impactFactor : "",
+      warning: selected.has("xrWarn") ? metric.xrWarning || metric.warning : "",
+      year: "",
+      extraMetrics: Array.isArray(metric.extraMetrics)
+        ? metric.extraMetrics.filter((entry) => {
+          if (!entry || !entry.key) return true;
+          if (!selected.has(entry.key)) return false;
+          if (entry.key === "xrTop" && metric.xrTop) return false;
+          if (entry.key === "xrWarn" && (metric.xrWarning || metric.warning)) return false;
+          if (entry.key === "sciUpTop" && metric.casTop) return false;
+          return true;
+        })
+        : []
+    };
   }
 
   function renderOpenAlexChip(openAlex) {

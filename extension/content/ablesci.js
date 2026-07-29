@@ -3,7 +3,7 @@
 
   const shared = window.JournalLensShared;
   const build = window.JournalLensBuild || {};
-  const ADAPTER_VERSION = build.version || "0.4.2";
+  const ADAPTER_VERSION = build.version || "0.4.5";
   const FORM_WAIT_MS = 30000;
   const SUCCESS_NOTICE_MS = 4500;
   const WARNING_NOTICE_MS = 8000;

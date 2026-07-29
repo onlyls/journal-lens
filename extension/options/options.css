@@ -77,6 +77,11 @@ h2 {
   letter-spacing: 0;
 }
 
+h3 {
+  font-size: 14px;
+  margin: 0;
+}
+
 .hero p,
 .status,
 .muted p {
@@ -152,6 +157,8 @@ label span {
 
 input[type="password"],
 input[type="text"],
+input[type="search"],
+input[type="number"],
 input[type="url"],
 select {
   background: #f8fafc;
@@ -162,6 +169,152 @@ select {
   min-height: 38px;
   padding: 0 10px;
   width: 100%;
+}
+
+.section-description {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+  margin-top: 4px;
+}
+
+.citation-default {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  border-radius: 8px;
+  color: #14532d;
+  display: grid;
+  font-size: 13px;
+  gap: 5px;
+  padding: 12px;
+}
+
+.citation-default small,
+.citation-card small {
+  color: #64748b;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.citation-search-row {
+  align-items: end;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.citation-list {
+  display: grid;
+  gap: 8px;
+}
+
+.citation-list:empty::before {
+  color: #64748b;
+  content: "暂无内容";
+  font-size: 12px;
+}
+
+.citation-card {
+  align-items: center;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 11px;
+}
+
+.citation-card-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.citation-card-title {
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.citation-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.citation-card-actions button {
+  font-size: 12px;
+  min-height: 30px;
+  padding: 0 9px;
+}
+
+.citation-badge {
+  background: #dbeafe;
+  border-radius: 999px;
+  color: #1e40af;
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 800;
+  margin-left: 6px;
+  padding: 2px 6px;
+  vertical-align: 1px;
+}
+
+.citation-badge.default {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.citation-subhead {
+  border-top: 1px solid #e2e8f0;
+  padding-top: 12px;
+}
+
+.citation-import {
+  align-items: center;
+  border-top: 1px solid #e2e8f0;
+  display: flex;
+  gap: 12px;
+  padding-top: 12px;
+}
+
+.citation-import p,
+.csl-attribution {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.compact-file {
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.compact-file input {
+  display: none;
+}
+
+.compact-file span {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  color: #0f172a;
+  display: inline-flex;
+  min-height: 34px;
+  padding: 0 12px;
+  align-items: center;
+}
+
+.citation-preview {
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  max-height: 180px;
+  overflow: auto;
+  padding: 12px;
 }
 
 .metric-fields {
@@ -176,6 +329,13 @@ select {
   font-weight: 750;
   margin-bottom: 9px;
   padding: 0;
+}
+
+.field-help {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 0 0 10px;
 }
 
 .field-options {
@@ -199,6 +359,39 @@ select {
 
 .field-option span {
   font-size: 12px;
+}
+
+.field-option-copy {
+  align-items: flex-start;
+  display: grid;
+  gap: 2px;
+}
+
+.field-option-copy small {
+  color: #64748b;
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.cache-settings {
+  border-top: 1px solid #e2e8f0;
+  display: grid;
+  gap: 12px;
+  padding-top: 14px;
+}
+
+.cache-duration {
+  align-items: end;
+}
+
+.cache-forever {
+  box-sizing: border-box;
+}
+
+.cache-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .api-test-row {
@@ -275,5 +468,24 @@ select {
   .api-test-row {
     align-items: stretch;
     grid-template-columns: 1fr;
+  }
+
+  .citation-search-row,
+  .citation-card {
+    align-items: stretch;
+    grid-template-columns: 1fr;
+  }
+
+  .citation-card-actions {
+    justify-content: flex-start;
+  }
+
+  .citation-import {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .cache-actions button {
+    width: 100%;
   }
 }
