@@ -10,6 +10,13 @@ blob-report/
 # Generated extension packages
 releases/
 
+# Local development tests, npm metadata, and Node-only generators
+tests/
+package.json
+package-lock.json
+tools/generate-csl-style-index.js
+tools/vendor-citeproc.js
+
 # Downloaded third-party development datasets
 external-data/showjcr/*.csv
 *:Zone.Identifier

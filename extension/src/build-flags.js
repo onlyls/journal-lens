@@ -2,8 +2,9 @@
   "use strict";
 
   globalThis.JournalLensBuild = {
-    channel: "debug",
+    channel: "release",
     browser: "chromium",
-    enableDebug: true
+    version: "0.4.5",
+    enableDebug: false
   };
 })();
