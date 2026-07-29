@@ -2,6 +2,11 @@
 node_modules/
 *.log
 
+# Local development tests and npm metadata
+tests/
+package.json
+package-lock.json
+
 # Playwright output
 playwright-report/
 test-results/
